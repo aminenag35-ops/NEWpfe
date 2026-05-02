@@ -1,14 +1,15 @@
 """
-App 3 — Dashboard de supervision sécurité
-=========================================
+App 3 — Dashboard de supervision sécurité (API-only backend)
+=============================================================
 
-Rôle : afficher en temps réel les alertes générées par le ML, les statistiques,
-et la liste des IPs bloquées.
+Rôle : fournir en temps réel les alertes générées par le ML via Socket.IO,
+les statistiques, et la liste des IPs bloquées.
 
 Choix techniques :
-    - Flask + Flask-SocketIO pour le push WebSocket vers le navigateur.
+    - Flask + Flask-SocketIO pour le push WebSocket vers le navigateur React.
     - Un thread d'arrière-plan consomme `security.alerts` et émet sur le WS.
     - Pas de polling : le dashboard reçoit chaque alerte en quelques ms.
+    - React frontend (Vite) servi depuis /app/static/dist.
 """
 
 import os
@@ -18,10 +19,10 @@ import logging
 
 sys.path.insert(0, "/app/shared")
 
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, redirect, send_from_directory
 from flask_socketio import SocketIO
 
-from oidc import init_oidc, login_redirect, handle_callback, logout, require_role
+from oidc import init_oidc, login_redirect, handle_callback, logout, require_role, get_current_user
 from kafka_client import get_consumer
 import psycopg2
 import psycopg2.extras
@@ -38,6 +39,7 @@ init_oidc(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 TOPIC_ALERTS = os.environ.get("KAFKA_TOPIC_ALERTS", "security.alerts")
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static", "dist")
 
 
 # -----------------------------------------------------------------------------
@@ -75,12 +77,24 @@ def login():
 @app.route("/callback")
 def callback():
     handle_callback()
-    return "<script>location='/'</script>"
+    return redirect("/")
 
 
 @app.route("/logout")
 def do_logout():
     return logout()
+
+
+# -----------------------------------------------------------------------------
+# API — current user
+# -----------------------------------------------------------------------------
+
+@app.route("/api/me")
+def api_me():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not authenticated"}), 401
+    return jsonify(user)
 
 
 # -----------------------------------------------------------------------------
@@ -120,7 +134,6 @@ def api_recent_alerts():
                 "ORDER BY timestamp DESC LIMIT 50"
             )
             alerts = cur.fetchall()
-    # JSON-isable
     for a in alerts:
         a["timestamp"] = a["timestamp"].isoformat()
     return jsonify(alerts)
@@ -141,33 +154,15 @@ def api_blocked_ips():
 
 
 # -----------------------------------------------------------------------------
-# Page d'accueil minimaliste (l'UI riche n'est pas demandée)
+# React SPA — catch-all (doit être en dernier)
 # -----------------------------------------------------------------------------
 
-INDEX_TEMPLATE = """
-<!doctype html>
-<title>Dashboard Sécurité</title>
-<h1>Dashboard Sécurité</h1>
-<div id="alerts"></div>
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script>
-const socket = io();
-socket.on('new_alert', (alert) => {
-    const div = document.createElement('div');
-    div.style.padding = '8px';
-    div.style.margin = '4px';
-    div.style.border = '1px solid red';
-    div.textContent = `[${alert.severity}] ${alert.alert_type} — `
-                    + `${alert.username} from ${alert.ip_address}`;
-    document.getElementById('alerts').prepend(div);
-});
-</script>
-"""
-
-
-@app.route("/")
-def index():
-    return render_template_string(INDEX_TEMPLATE)
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_react(path):
+    if path and os.path.exists(os.path.join(STATIC_DIR, path)):
+        return send_from_directory(STATIC_DIR, path)
+    return send_from_directory(STATIC_DIR, "index.html")
 
 
 if __name__ == "__main__":

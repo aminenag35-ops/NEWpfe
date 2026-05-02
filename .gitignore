@@ -1,0 +1,19 @@
+# Node.js
+node_modules/
+
+# React/Vite build output
+static/dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Zip files
+*.zip

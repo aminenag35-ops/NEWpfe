@@ -1,14 +1,15 @@
 """
-App 1 — Administration & sécurité
-=================================
+App 1 — Administration & sécurité (API-only backend)
+=====================================================
 
 Rôle :
     - Lister, bloquer/débloquer les utilisateurs.
     - Consulter le journal d'audit.
     - Voir les alertes générées par le ML.
-    - Débloquer manuellement une IP dans Redis.
+    - Lister et débloquer manuellement les IPs bloquées dans Redis.
 
 Réservé aux comptes ayant le rôle Keycloak `admin`.
+React frontend (Vite) servi depuis /app/static/dist.
 """
 
 import os
@@ -17,14 +18,15 @@ import logging
 
 sys.path.insert(0, "/app/shared")
 
-from flask import Flask, request, jsonify, render_template_string, redirect
+from flask import Flask, request, jsonify, redirect, send_from_directory
 
 from oidc import (
-    init_oidc, login_redirect, handle_callback, logout, require_role
+    init_oidc, login_redirect, handle_callback, logout,
+    require_role, get_current_user
 )
 import psycopg2
 import psycopg2.extras
-import redis
+import redis as redis_module
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s")
 log = logging.getLogger("admin")
@@ -32,6 +34,8 @@ log = logging.getLogger("admin")
 app = Flask(__name__)
 app.secret_key = os.environ["APP_SECRET_KEY"]
 init_oidc(app)
+
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static", "dist")
 
 
 def db():
@@ -41,7 +45,7 @@ def db():
 
 
 def redis_conn():
-    return redis.Redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
+    return redis_module.Redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
 
 
 # -----------------------------------------------------------------------------
@@ -62,6 +66,18 @@ def callback():
 @app.route("/logout")
 def do_logout():
     return logout()
+
+
+# -----------------------------------------------------------------------------
+# API — current user
+# -----------------------------------------------------------------------------
+
+@app.route("/api/me")
+def api_me():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not authenticated"}), 401
+    return jsonify(user)
 
 
 # -----------------------------------------------------------------------------
@@ -148,6 +164,19 @@ def alerts():
 # Gestion des IPs bloquées (Redis)
 # -----------------------------------------------------------------------------
 
+@app.route("/api/blocked-ips")
+@require_role("admin")
+def list_blocked_ips():
+    r = redis_conn()
+    blocked = []
+    for key in r.scan_iter("blocked_ip:*"):
+        ip = key.split(":", 1)[1]
+        ttl = r.ttl(key)
+        reason = r.get(key)
+        blocked.append({"ip": ip, "ttl_seconds": ttl, "reason": reason})
+    return jsonify(blocked)
+
+
 @app.route("/api/blocked-ips/<ip>", methods=["DELETE"])
 @require_role("admin")
 def unblock_ip(ip):
@@ -157,23 +186,15 @@ def unblock_ip(ip):
 
 
 # -----------------------------------------------------------------------------
-# UI minimale
+# React SPA — catch-all (doit être en dernier)
 # -----------------------------------------------------------------------------
 
-@app.route("/")
-@require_role("admin")
-def index():
-    return render_template_string("""
-        <!doctype html>
-        <title>Admin</title>
-        <h1>Console Admin</h1>
-        <ul>
-            <li><a href="/api/users">Utilisateurs</a></li>
-            <li><a href="/api/audit">Audit</a></li>
-            <li><a href="/api/alerts">Alertes</a></li>
-            <li><a href="/logout">Déconnexion</a></li>
-        </ul>
-    """)
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_react(path):
+    if path and os.path.exists(os.path.join(STATIC_DIR, path)):
+        return send_from_directory(STATIC_DIR, path)
+    return send_from_directory(STATIC_DIR, "index.html")
 
 
 if __name__ == "__main__":

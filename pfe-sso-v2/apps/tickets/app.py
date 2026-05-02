@@ -1,18 +1,20 @@
 """
-App 2 — Tickets + User Profile
-==============================
+App 2 — Tickets + User Profile (API-only backend)
+==================================================
 
 Rôle : c'est l'application qui simule l'activité utilisateur. Chaque action
 significative (surtout login / logout) est publiée sur Kafka pour que le ML
 puisse l'analyser en temps réel.
 
-Endpoints clés :
-    /            -> liste des tickets
-    /login       -> redirige vers Keycloak
-    /callback    -> retour de Keycloak + publication d'un événement Kafka
-    /logout      -> déconnexion + publication d'un événement
-    /ticket/new  -> création d'un ticket
-    /api/event   -> endpoint utilisé par le simulateur de trafic
+Endpoints :
+    /login           -> redirige vers Keycloak
+    /callback        -> retour de Keycloak + publication d'un événement Kafka
+    /logout          -> déconnexion + publication d'un événement
+    /api/me          -> informations sur l'utilisateur courant
+    /api/tickets     -> GET liste, POST créer un ticket
+    /api/event       -> endpoint utilisé par le simulateur de trafic
+
+React frontend (Vite) servi depuis /app/static/dist.
 """
 
 import os
@@ -21,7 +23,7 @@ import logging
 
 sys.path.insert(0, "/app/shared")
 
-from flask import Flask, request, redirect, jsonify, render_template_string
+from flask import Flask, request, redirect, jsonify, send_from_directory
 
 from oidc import (
     init_oidc, login_redirect, handle_callback, logout,
@@ -41,6 +43,8 @@ init_oidc(app)
 # Producteur Kafka : un seul pour toute la durée de vie du process
 KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC_EVENTS", "auth.events")
 producer = get_producer()
+
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static", "dist")
 
 
 def db():
@@ -101,6 +105,70 @@ def do_logout():
 
 
 # ----------------------------------------------------------------------------
+# API — current user
+# ----------------------------------------------------------------------------
+
+@app.route("/api/me")
+def api_me():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not authenticated"}), 401
+    return jsonify(user)
+
+
+# ----------------------------------------------------------------------------
+# API — Tickets
+# ----------------------------------------------------------------------------
+
+@app.route("/api/tickets")
+@login_required
+def list_tickets():
+    user = get_current_user()
+    with db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM tickets.tickets WHERE created_by = %s "
+                "ORDER BY created_at DESC LIMIT 50",
+                (user["sub"],)
+            )
+            tickets = cur.fetchall()
+    for t in tickets:
+        t["created_at"] = t["created_at"].isoformat()
+    return jsonify(tickets)
+
+
+@app.route("/api/tickets", methods=["POST"])
+@login_required
+def create_ticket():
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    title = data.get("title", "").strip()
+    if not title:
+        return jsonify({"error": "Title required"}), 400
+
+    with db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "INSERT INTO tickets.tickets (title, description, created_by) "
+                "VALUES (%s, %s, %s) RETURNING *",
+                (title, data.get("description", ""), user["sub"])
+            )
+            ticket = cur.fetchone()
+
+    ticket["created_at"] = ticket["created_at"].isoformat()
+
+    # On publie aussi cet événement pour la traçabilité
+    publish_event(
+        producer, KAFKA_TOPIC,
+        event_type="ticket_created",
+        username=user["username"],
+        ip_address=client_ip(),
+        details={"title": title},
+    )
+    return jsonify(ticket), 201
+
+
+# ----------------------------------------------------------------------------
 # Endpoint utilisé par le simulateur de trafic
 # ----------------------------------------------------------------------------
 
@@ -127,72 +195,15 @@ def api_event():
 
 
 # ----------------------------------------------------------------------------
-# UI minimaliste (le sujet n'a pas demandé d'UI, juste une page de test)
+# React SPA — catch-all (doit être en dernier)
 # ----------------------------------------------------------------------------
 
-HOME_TEMPLATE = """
-<!doctype html>
-<title>Tickets</title>
-<h1>App Tickets</h1>
-{% if user %}
-  <p>Connecté : {{ user.username }} ({{ user.roles|join(', ') }})</p>
-  <form method="POST" action="/ticket/new">
-    <input name="title" placeholder="Titre" required>
-    <input name="description" placeholder="Description">
-    <button>Créer</button>
-  </form>
-  <ul>
-    {% for t in tickets %}
-      <li>#{{ t.id }} — {{ t.title }} ({{ t.status }})</li>
-    {% endfor %}
-  </ul>
-  <a href="/logout">Déconnexion</a>
-{% else %}
-  <a href="/login">Connexion via Keycloak</a>
-{% endif %}
-"""
-
-
-@app.route("/")
-@login_required
-def home():
-    user = get_current_user()
-    with db() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                "SELECT * FROM tickets.tickets WHERE created_by = %s "
-                "ORDER BY created_at DESC LIMIT 20",
-                (user["sub"],)
-            )
-            tickets = cur.fetchall()
-    return render_template_string(HOME_TEMPLATE, user=user, tickets=tickets)
-
-
-@app.route("/ticket/new", methods=["POST"])
-@login_required
-def new_ticket():
-    user = get_current_user()
-    title = request.form.get("title", "").strip()
-    if not title:
-        return "Title required", 400
-
-    with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO tickets.tickets (title, description, created_by) "
-                "VALUES (%s, %s, %s)",
-                (title, request.form.get("description", ""), user["sub"])
-            )
-
-    # On publie aussi cet événement pour la traçabilité (mais pas critique)
-    publish_event(
-        producer, KAFKA_TOPIC,
-        event_type="ticket_created",
-        username=user["username"],
-        ip_address=client_ip(),
-        details={"title": title},
-    )
-    return redirect("/")
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_react(path):
+    if path and os.path.exists(os.path.join(STATIC_DIR, path)):
+        return send_from_directory(STATIC_DIR, path)
+    return send_from_directory(STATIC_DIR, "index.html")
 
 
 if __name__ == "__main__":

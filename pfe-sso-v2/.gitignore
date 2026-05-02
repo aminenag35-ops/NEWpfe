@@ -1,0 +1,20 @@
+# Node.js
+**/node_modules/
+
+# React build output (rebuilt by Docker)
+apps/*/static/dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -21,7 +21,7 @@ import functools
 from urllib.parse import urlencode
 
 import requests
-from flask import redirect, session, request, abort, g
+from flask import redirect, session, request, abort, g, jsonify
 
 
 class OIDCConfig:
@@ -126,10 +126,12 @@ def get_current_user():
 
 
 def login_required(f):
-    """Décorateur : redirige vers Keycloak si pas connecté."""
+    """Décorateur : redirige vers Keycloak si pas connecté (API → 401 JSON)."""
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         if not get_current_user():
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Not authenticated"}), 401
             return login_redirect()
         g.user = get_current_user()
         return f(*args, **kwargs)
@@ -144,6 +146,8 @@ def require_role(*allowed_roles):
         def wrapper(*args, **kwargs):
             user = get_current_user()
             if not any(role in user.get("roles", []) for role in allowed_roles):
+                if request.path.startswith("/api/"):
+                    return jsonify({"error": "Forbidden", "detail": "Insufficient role"}), 403
                 abort(403, "Accès refusé")
             return f(*args, **kwargs)
         return wrapper
