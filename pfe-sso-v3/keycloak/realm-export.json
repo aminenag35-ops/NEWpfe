@@ -1,0 +1,145 @@
+{
+  "id": "pfe",
+  "realm": "pfe",
+  "displayName": "PFE DevSecOps",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": false,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "accessTokenLifespan": 300,
+
+  "eventsEnabled": true,
+  "eventsExpiration": 86400,
+  "eventsListeners": ["jboss-logging"],
+  "enabledEventTypes": [
+    "LOGIN", "LOGIN_ERROR", "LOGOUT", "LOGOUT_ERROR",
+    "REGISTER", "UPDATE_PASSWORD", "REMOVE_TOTP",
+    "USER_DISABLED_BY_PERMANENT_LOCKOUT", "USER_DISABLED_BY_TEMPORARY_LOCKOUT",
+    "REFRESH_TOKEN_ERROR", "CODE_TO_TOKEN_ERROR"
+  ],
+  "adminEventsEnabled": false,
+  "roles": {
+    "realm": [
+      { "name": "admin",   "description": "Administrateur" },
+      { "name": "manager", "description": "Manager" },
+      { "name": "user",    "description": "Utilisateur" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "spa-admin",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "redirectUris": ["http://localhost:3001/*"],
+      "webOrigins": ["http://localhost:3001"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3001/*",
+        "pkce.code.challenge.method": "S256"
+      },
+      "standardFlowEnabled": true,
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "realm-roles-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "spa-tickets",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "redirectUris": ["http://localhost:3002/*"],
+      "webOrigins": ["http://localhost:3002"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3002/*",
+        "pkce.code.challenge.method": "S256"
+      },
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "spa-dashboard",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "redirectUris": ["http://localhost:3003/*"],
+      "webOrigins": ["http://localhost:3003"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3003/*",
+        "pkce.code.challenge.method": "S256"
+      },
+      "standardFlowEnabled": true,
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "api-admin",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "admin-secret-pfe",
+      "bearerOnly": true,
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "api-tickets",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "tickets-secret-pfe",
+      "bearerOnly": true,
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "api-dashboard",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "dashboard-secret-pfe",
+      "bearerOnly": true,
+      "fullScopeAllowed": true
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@pfe.local",
+      "firstName": "Alice", "lastName": "Admin",
+      "enabled": true, "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["admin", "user"]
+    },
+    {
+      "username": "bob",
+      "email": "bob@pfe.local",
+      "firstName": "Bob", "lastName": "Manager",
+      "enabled": true, "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["manager", "user"]
+    },
+    {
+      "username": "charlie",
+      "email": "charlie@pfe.local",
+      "firstName": "Charlie", "lastName": "User",
+      "enabled": true, "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["user"]
+    }
+  ]
+}
