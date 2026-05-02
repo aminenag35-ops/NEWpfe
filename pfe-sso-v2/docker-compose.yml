@@ -1,0 +1,222 @@
+# =============================================================================
+# PFE DevSecOps - Phase 2 simplifiée
+# Architecture event-driven : Kafka KRaft (sans Zookeeper) + ML temps réel
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL : une seule base, plusieurs schémas
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: pfe-postgres
+    environment:
+      POSTGRES_USER: pfe
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: pfe_db
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pfe"]
+      interval: 5s
+      retries: 10
+    networks:
+      - pfe-net
+
+  # ---------------------------------------------------------------------------
+  # Redis : cache des IPs bloquées (TTL natif)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: pfe-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - pfe-net
+
+  # ---------------------------------------------------------------------------
+  # Kafka en mode KRaft (PAS de Zookeeper)
+  # ---------------------------------------------------------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: pfe-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      # Configuration KRaft (nouveau mode sans Zookeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      # Single-node : on relâche les contraintes de réplication
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      retries: 10
+    networks:
+      - pfe-net
+
+  # ---------------------------------------------------------------------------
+  # Keycloak : SSO unique pour les 3 apps
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: pfe-keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/pfe_db
+      KC_DB_USERNAME: pfe
+      KC_DB_PASSWORD: ${DB_PASSWORD}
+      KC_DB_SCHEMA: keycloak
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pfe-net
+
+  # ---------------------------------------------------------------------------
+  # App 1 : Admin User Management
+  # ---------------------------------------------------------------------------
+  app-admin:
+    build: ./apps/admin
+    container_name: pfe-app-admin
+    volumes:
+      - ./shared:/app/shared:ro
+    environment:
+      APP_NAME: "Admin"
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      SERVER_IP: ${SERVER_IP}
+      OIDC_CLIENT_ID: app-admin
+      OIDC_CLIENT_SECRET: ${OIDC_ADMIN_SECRET}
+      OIDC_ISSUER: http://keycloak:8080/realms/pfe
+      OIDC_REDIRECT_URI: http://${SERVER_IP}:5001/callback
+      DATABASE_URL: postgresql://pfe:${DB_PASSWORD}@postgres:5432/pfe_db
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BROKER: kafka:9092
+      FLASK_PORT: "5001"
+    ports:
+      - "5001:5001"
+    depends_on:
+      - keycloak
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - pfe-net
+
+  # ---------------------------------------------------------------------------
+  # App 2 : Tickets + Profile (le vrai producteur de logs)
+  # ---------------------------------------------------------------------------
+  app-tickets:
+    build: ./apps/tickets
+    container_name: pfe-app-tickets
+    volumes:
+      - ./shared:/app/shared:ro
+    environment:
+      APP_NAME: "Tickets"
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      SERVER_IP: ${SERVER_IP}
+      OIDC_CLIENT_ID: app-tickets
+      OIDC_CLIENT_SECRET: ${OIDC_TICKETS_SECRET}
+      OIDC_ISSUER: http://keycloak:8080/realms/pfe
+      OIDC_REDIRECT_URI: http://${SERVER_IP}:5002/callback
+      DATABASE_URL: postgresql://pfe:${DB_PASSWORD}@postgres:5432/pfe_db
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BROKER: kafka:9092
+      KAFKA_TOPIC_EVENTS: auth.events
+      FLASK_PORT: "5002"
+    ports:
+      - "5002:5002"
+    depends_on:
+      - keycloak
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - pfe-net
+
+  # ---------------------------------------------------------------------------
+  # App 3 : Dashboard sécurité (consomme les alertes ML en WebSocket)
+  # ---------------------------------------------------------------------------
+  app-dashboard:
+    build: ./apps/dashboard
+    container_name: pfe-app-dashboard
+    volumes:
+      - ./shared:/app/shared:ro
+    environment:
+      APP_NAME: "Dashboard"
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      SERVER_IP: ${SERVER_IP}
+      OIDC_CLIENT_ID: app-dashboard
+      OIDC_CLIENT_SECRET: ${OIDC_DASHBOARD_SECRET}
+      OIDC_ISSUER: http://keycloak:8080/realms/pfe
+      OIDC_REDIRECT_URI: http://${SERVER_IP}:5003/callback
+      DATABASE_URL: postgresql://pfe:${DB_PASSWORD}@postgres:5432/pfe_db
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BROKER: kafka:9092
+      KAFKA_TOPIC_ALERTS: security.alerts
+      FLASK_PORT: "5003"
+    ports:
+      - "5003:5003"
+    depends_on:
+      - keycloak
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - pfe-net
+
+  # ---------------------------------------------------------------------------
+  # ML Detector : consomme auth.events, publie security.alerts
+  # ---------------------------------------------------------------------------
+  ml-detector:
+    build: ./apps/ml-detector
+    container_name: pfe-ml-detector
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKER: kafka:9092
+      KAFKA_TOPIC_EVENTS: auth.events
+      KAFKA_TOPIC_ALERTS: security.alerts
+      DATABASE_URL: postgresql://pfe:${DB_PASSWORD}@postgres:5432/pfe_db
+      REDIS_URL: redis://redis:6379/0
+      # Seuils des règles
+      BRUTE_FORCE_THRESHOLD: "10"      # 10 échecs = brute force
+      BRUTE_FORCE_WINDOW: "120"        # ... en 120 secondes
+      MULTI_IP_THRESHOLD: "5"          # 5 IPs distinctes
+      MULTI_IP_WINDOW: "600"           # ... en 10 minutes
+      UNUSUAL_HOUR_START: "22"
+      UNUSUAL_HOUR_END: "6"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - pfe-net
+
+volumes:
+  pg_data:
+
+networks:
+  pfe-net:
+    driver: bridge
