@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card mb-3"><div class="card-body"><h5>🔍 Filtres</h5>
+    <form method="GET" action="/logs" class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label">Utilisateur</label><input type="text" name="username" class="form-control form-control-sm" value="{{ filter_user }}" placeholder="Rechercher…"></div>
+        <div class="col-md-2"><label class="form-label">Date début</label><input type="date" name="date_from" class="form-control form-control-sm" value="{{ filter_date_from }}"></div>
+        <div class="col-md-2"><label class="form-label">Date fin</label><input type="date" name="date_to" class="form-control form-control-sm" value="{{ filter_date_to }}"></div>
+        <div class="col-md-3"><label class="form-label">Action</label><input type="text" name="action" class="form-control form-control-sm" value="{{ filter_action }}" placeholder="LOGIN, VIEW_…"></div>
+        <div class="col-md-2"><button type="submit" class="btn btn-primary btn-sm w-100">Filtrer</button></div>
+    </form>
+</div></div>
+<div class="card"><div class="card-body">
+    <h4>📋 Logs d'actions ({{ logs|length }} résultats)</h4>
+    <table class="table table-striped table-sm"><thead><tr><th>ID</th><th>Date</th><th>Utilisateur</th><th>Action</th><th>Détails</th><th>Keycloak ID</th></tr></thead><tbody>
+    {% for log in logs %}<tr><td>{{ log.id }}</td><td>{{ log.timestamp.strftime('%d/%m/%Y %H:%M:%S') if log.timestamp else '-' }}</td><td><strong>{{ log.username }}</strong></td><td><span class="badge bg-secondary">{{ log.action }}</span></td><td class="text-muted small">{{ log.details or '-' }}</td><td><code>{{ log.keycloak_id[:12] }}…</code></td></tr>{% endfor %}
+    </tbody></table>
+    {% if not logs %}<p class="text-muted text-center">Aucun log trouvé avec ces filtres.</p>{% endif %}
+</div></div>
+{% endblock %}

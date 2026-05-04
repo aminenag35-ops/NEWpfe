@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h4 class="card-title">🏠 Tableau de bord IAM</h4>
+                <p>Bienvenue <strong>{{ user.name }}</strong> !</p>
+                <p>Vous êtes connecté via SSO Keycloak (OpenID Connect).</p>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6"><div class="card mb-3"><div class="card-body text-center"><h2 class="text-primary">{{ users_count }}</h2><p class="text-muted">Utilisateurs enregistrés</p></div></div></div>
+            <div class="col-md-6"><div class="card mb-3"><div class="card-body text-center"><h2 class="text-success">{{ logs_count }}</h2><p class="text-muted">Actions enregistrées</p></div></div></div>
+        </div>
+        <div class="card mb-3"><div class="card-body">
+                <h5>📋 Accès selon votre rôle</h5>
+                <table class="table table-sm">
+                    <thead><tr><th>Page</th><th>Rôles requis</th><th>Accès</th></tr></thead>
+                    <tbody>
+                        <tr><td><a href="/profile">Mon Profil</a></td><td><span class="badge bg-secondary">tous</span></td><td>✅</td></tr>
+                        <tr><td><a href="/users">Liste Utilisateurs</a></td><td><span class="badge bg-warning text-dark">admin</span> <span class="badge bg-info">manager</span></td><td>{% if 'admin' in user.roles or 'manager' in user.roles %}✅{% else %}🔒{% endif %}</td></tr>
+                        <tr><td><a href="/audit">Journal d'Audit</a></td><td><span class="badge bg-danger">admin</span></td><td>{% if 'admin' in user.roles %}✅{% else %}🔒{% endif %}</td></tr>
+                    </tbody>
+                </table>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card"><div class="card-body">
+                <h5 class="card-title">👤 Votre identité</h5>
+                <ul class="list-unstyled">
+                    <li><strong>Username :</strong> {{ user.username }}</li>
+                    <li><strong>Email :</strong> {{ user.email }}</li>
+                    <li><strong>Keycloak ID :</strong> <code>{{ user.sub[:12] }}…</code></li>
+                    <li><strong>Rôles :</strong><br>
+                        {% for role in user.roles %}{% if role not in ['default-roles-pfe', 'offline_access', 'uma_authorization'] %}<span class="badge bg-warning text-dark">{{ role }}</span>{% endif %}{% endfor %}
+                    </li>
+                </ul>
+        </div></div>
+        <div class="card mt-3"><div class="card-body">
+                <h5>🔗 Applications SSO</h5>
+                <p class="small text-muted">Vous êtes déjà connecté – cliquez pour accéder sans vous reconnecter.</p>
+                <a href="http://{{ server_ip }}:5002/" class="btn btn-outline-primary btn-sm d-block mb-2">🎫 Ticketing</a>
+                <a href="http://{{ server_ip }}:5003/" class="btn btn-outline-primary btn-sm d-block">📊 Audit</a>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

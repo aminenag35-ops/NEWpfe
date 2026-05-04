@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-3"><div class="card-body">
+                <h4>🎫 Ticket #{{ ticket.id }} – {{ ticket.title }}</h4>
+                <div class="mb-3">
+                    {% if ticket.status == 'open' %}<span class="badge bg-danger">Ouvert</span>{% elif ticket.status == 'in_progress' %}<span class="badge bg-warning text-dark">En cours</span>{% else %}<span class="badge bg-success">Fermé</span>{% endif %}
+                    {% if ticket.priority == 'high' %}<span class="badge bg-danger">Haute</span>{% elif ticket.priority == 'medium' %}<span class="badge bg-warning text-dark">Moyenne</span>{% else %}<span class="badge bg-info">Basse</span>{% endif %}
+                </div>
+                <p>{{ ticket.description or 'Aucune description.' }}</p>
+                <small class="text-muted">Créé par <strong>{{ ticket.created_by_name }}</strong> le {{ ticket.created_at.strftime('%d/%m/%Y à %H:%M') if ticket.created_at else '-' }}</small>
+        </div></div>
+        <div class="card"><div class="card-body">
+                <h5>📜 Historique des statuts</h5>
+                <table class="table table-sm"><thead><tr><th>Date</th><th>Statut</th><th>Par</th></tr></thead><tbody>
+                        {% for h in history %}<tr><td>{{ h.changed_at.strftime('%d/%m/%Y %H:%M') if h.changed_at else '-' }}</td><td>{{ h.status }}</td><td>{{ h.changed_by }}</td></tr>{% endfor %}
+                </tbody></table>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        {% if 'admin' in user.roles or 'manager' in user.roles %}<div class="card"><div class="card-body">
+                <h5>⚙️ Changer le statut</h5>
+                <form method="POST" action="/ticket/{{ ticket.id }}/status">
+                    <select name="status" class="form-select mb-2">
+                        <option value="open" {% if ticket.status == 'open' %}selected{% endif %}>Ouvert</option>
+                        <option value="in_progress" {% if ticket.status == 'in_progress' %}selected{% endif %}>En cours</option>
+                        <option value="closed" {% if ticket.status == 'closed' %}selected{% endif %}>Fermé</option>
+                    </select>
+                    <button type="submit" class="btn btn-warning btn-sm w-100">Mettre à jour</button>
+                </form>
+        </div></div>{% endif %}
+        <div class="card mt-3"><div class="card-body"><a href="/" class="btn btn-outline-secondary btn-sm w-100">← Retour aux tickets</a></div></div>
+    </div>
+</div>
+{% endblock %}

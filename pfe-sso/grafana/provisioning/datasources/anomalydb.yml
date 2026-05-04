@@ -1,0 +1,15 @@
+apiVersion: 1
+datasources:
+  - name: AnomalyDB
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: anomaly_db
+    user: pfe
+    secureJsonData:
+      password: "pfe_secret"
+    jsonData:
+      sslmode: "disable"
+      postgresVersion: 1600
+    isDefault: true
+    editable: true

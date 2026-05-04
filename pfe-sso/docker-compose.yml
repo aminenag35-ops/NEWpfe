@@ -1,0 +1,193 @@
+###############################################################################
+# PFE DevSecOps – Phase 1 + Phase 2 : SSO + Détection d'anomalies IA
+###############################################################################
+
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pfe-postgres
+    environment:
+      POSTGRES_USER: pfe
+      POSTGRES_PASSWORD: pfe_secret
+      POSTGRES_DB: keycloak
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init-databases.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./db/iam.sql:/docker-entrypoint-initdb.d/02-iam.sql
+      - ./db/ticketing.sql:/docker-entrypoint-initdb.d/03-ticketing.sql
+      - ./db/audit.sql:/docker-entrypoint-initdb.d/04-audit.sql
+      - ./db/migration-phase2.sql:/docker-entrypoint-initdb.d/05-migration-phase2.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pfe"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - pfe-net
+
+  lldap:
+    image: lldap/lldap:stable
+    container_name: pfe-lldap
+    environment:
+      - LLDAP_JWT_SECRET=super-secret-jwt-key-change-me
+      - LLDAP_LDAP_USER_PASS=admin_password
+      - LLDAP_LDAP_BASE_DN=dc=pfe,dc=local
+    ports:
+      - "3890:3890"
+      - "17170:17170"
+    volumes:
+      - lldap_data:/data
+    networks:
+      - pfe-net
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: pfe-keycloak
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: pfe
+      KC_DB_PASSWORD: pfe_secret
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pfe-net
+
+  app-iam:
+    build:
+      context: ./apps/iam
+    container_name: pfe-app-iam
+    volumes:
+      - ./shared:/app/shared
+      - ./shared/templates/base.html:/app/templates/base.html
+    environment:
+      APP_NAME: "IAM"
+      APP_SECRET_KEY: "iam-secret-key-change-me"
+      SERVER_IP: "${SERVER_IP}"
+      OIDC_CLIENT_ID: "app-iam"
+      OIDC_CLIENT_SECRET: "iam-secret"
+      OIDC_ISSUER: "http://keycloak:8080/realms/pfe"
+      OIDC_REDIRECT_URI: "http://${SERVER_IP}:5001/callback"
+      DATABASE_URL: "postgresql://pfe:pfe_secret@postgres:5432/iam_db"
+      FLASK_PORT: "5001"
+    ports:
+      - "5001:5001"
+    depends_on:
+      - keycloak
+      - postgres
+    networks:
+      - pfe-net
+
+  app-ticketing:
+    build:
+      context: ./apps/ticketing
+    container_name: pfe-app-ticketing
+    volumes:
+      - ./shared:/app/shared
+      - ./shared/templates/base.html:/app/templates/base.html
+    environment:
+      APP_NAME: "Ticketing"
+      APP_SECRET_KEY: "ticketing-secret-key-change-me"
+      SERVER_IP: "${SERVER_IP}"
+      OIDC_CLIENT_ID: "app-ticketing"
+      OIDC_CLIENT_SECRET: "ticketing-secret"
+      OIDC_ISSUER: "http://keycloak:8080/realms/pfe"
+      OIDC_REDIRECT_URI: "http://${SERVER_IP}:5002/callback"
+      DATABASE_URL: "postgresql://pfe:pfe_secret@postgres:5432/ticketing_db"
+      FLASK_PORT: "5002"
+    ports:
+      - "5002:5002"
+    depends_on:
+      - keycloak
+      - postgres
+    networks:
+      - pfe-net
+
+  app-audit:
+    build:
+      context: ./apps/audit
+    container_name: pfe-app-audit
+    volumes:
+      - ./shared:/app/shared
+      - ./shared/templates/base.html:/app/templates/base.html
+    environment:
+      APP_NAME: "Audit"
+      APP_SECRET_KEY: "audit-secret-key-change-me"
+      SERVER_IP: "${SERVER_IP}"
+      OIDC_CLIENT_ID: "app-audit"
+      OIDC_CLIENT_SECRET: "audit-secret"
+      OIDC_ISSUER: "http://keycloak:8080/realms/pfe"
+      OIDC_REDIRECT_URI: "http://${SERVER_IP}:5003/callback"
+      DATABASE_URL: "postgresql://pfe:pfe_secret@postgres:5432/audit_db"
+      FLASK_PORT: "5003"
+    ports:
+      - "5003:5003"
+    depends_on:
+      - keycloak
+      - postgres
+    networks:
+      - pfe-net
+
+  anomaly-detector:
+    build:
+      context: ./apps/anomaly-detector
+      dockerfile: Dockerfile
+    container_name: pfe-anomaly-detector
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: pfe
+      DB_PASSWORD: pfe_secret
+      ANALYSIS_INTERVAL: "300"
+      ANOMALY_THRESHOLD: "0.6"
+      LOOKBACK_HOURS: "24"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pfe-net
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: pfe-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pfe-net
+
+volumes:
+  pg_data:
+  lldap_data:
+  grafana_data:
+
+networks:
+  pfe-net:
+    driver: bridge

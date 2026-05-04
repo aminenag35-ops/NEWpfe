@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card"><div class="card-body">
+        <h4>👥 Liste des Utilisateurs</h4>
+        <p class="text-muted">Accessible aux rôles <span class="badge bg-warning text-dark">admin</span> et <span class="badge bg-info">manager</span>.</p>
+        <table class="table table-striped"><thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Keycloak ID</th><th>Inscription</th></tr></thead><tbody>
+                {% for u in users %}<tr><td>{{ u.id }}</td><td>{{ u.username }}</td><td>{{ u.email }}</td><td><code>{{ u.keycloak_id[:12] }}…</code></td><td>{{ u.created_at.strftime('%d/%m/%Y %H:%M') if u.created_at else '-' }}</td></tr>{% endfor %}
+        </tbody></table>
+</div></div>
+{% endblock %}

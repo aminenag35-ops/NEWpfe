@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card"><div class="card-body">
+        <h4>👤 Mon Profil</h4>
+        <table class="table">
+            <tr><th>Champ</th><th>Valeur</th></tr>
+            <tr><td>Identifiant Keycloak</td><td><code>{{ user.sub }}</code></td></tr>
+            <tr><td>Nom d'utilisateur</td><td>{{ user.username }}</td></tr>
+            <tr><td>Nom complet</td><td>{{ user.name }}</td></tr>
+            <tr><td>Email</td><td>{{ user.email }}</td></tr>
+            <tr><td>Rôles</td><td>{% for role in user.roles %}{% if role not in ['default-roles-pfe', 'offline_access', 'uma_authorization'] %}<span class="badge bg-warning text-dark">{{ role }}</span>{% endif %}{% endfor %}</td></tr>
+        </table>
+        <p class="text-muted small">ℹ️ Ces informations proviennent du token OIDC délivré par Keycloak. Aucun mot de passe n'est stocké dans cette application.</p>
+</div></div>
+{% endblock %}
