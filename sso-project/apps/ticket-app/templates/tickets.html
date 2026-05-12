@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Tickets</h1>
+<div class="card">
+  <a href="{{ url_for('new_ticket') }}"><button>+ Nouveau ticket</button></a>
+</div>
+
+<div class="card">
+  <table>
+    <tr><th>#</th><th>Titre</th><th>Auteur</th><th>Priorité</th><th>Statut</th><th>Créé</th></tr>
+    {% for t in tickets %}
+    <tr>
+      <td>{{ t.id }}</td>
+      <td><a href="{{ url_for('ticket_detail', tid=t.id) }}">{{ t.title }}</a></td>
+      <td>{{ t.username }}</td>
+      <td><span class="badge {{ t.priority }}">{{ t.priority }}</span></td>
+      <td><span class="badge {{ t.status }}">{{ t.status }}</span></td>
+      <td>{{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="text-align:center;color:#999;">Aucun ticket</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

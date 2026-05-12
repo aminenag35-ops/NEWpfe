@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Tickets{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f4f6f9; color: #222; }
+    nav  { background: #0f766e; color: white; padding: 12px 24px; display: flex; justify-content: space-between; }
+    nav a { color: #ccfbf1; margin-right: 12px; text-decoration: none; }
+    nav a:hover { color: white; }
+    .container { max-width: 1000px; margin: 24px auto; padding: 0 24px; }
+    .card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+    button { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; background: #0f766e; color: white; }
+    input, textarea, select {
+      padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; width: 100%;
+      box-sizing: border-box; margin-bottom: 8px; font-family: inherit;
+    }
+    .badge { padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+    .open       { background: #dbeafe; color: #1e40af; }
+    .in_progress{ background: #fef3c7; color: #92400e; }
+    .closed     { background: #d1fae5; color: #065f46; }
+    .high       { background: #fee2e2; color: #991b1b; }
+    .normal     { background: #f3f4f6; color: #374151; }
+    .low        { background: #ede9fe; color: #5b21b6; }
+    .flash { padding: 10px; background: #fef3c7; border-left: 4px solid #f59e0b; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <div>
+      <strong>Tickets</strong>
+      {% if me %}
+      <a href="{{ url_for('tickets') }}">Mes tickets</a>
+      <a href="{{ url_for('new_ticket') }}">Nouveau</a>
+      <a href="{{ url_for('profile') }}">Profil</a>
+      {% endif %}
+    </div>
+    <div>
+      {% if me %}{{ me.preferred_username }} ·
+        <a href="{{ url_for('logout') }}">Déconnexion</a>{% endif %}
+    </div>
+  </nav>
+  <div class="container">
+    {% with messages = get_flashed_messages() %}
+      {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Utilisateurs</h1>
+
+<div class="card">
+  <h3>Créer un utilisateur</h3>
+  <form method="post" action="{{ url_for('create_user') }}">
+    <input type="text"     name="username"  placeholder="username" required>
+    <input type="email"    name="email"     placeholder="email" required>
+    <input type="text"     name="firstName" placeholder="prénom">
+    <input type="text"     name="lastName"  placeholder="nom">
+    <input type="password" name="password"  placeholder="mot de passe initial" required>
+    <button type="submit">Créer</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>{{ users|length }} utilisateurs</h3>
+  <table>
+    <tr><th>Username</th><th>Email</th><th>Statut</th><th>Actions</th></tr>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ u.email or '-' }}</td>
+      <td>
+        {% if u.enabled %}<span class="badge ok">actif</span>
+        {% else %}<span class="badge ko">bloqué</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('toggle_user', user_id=u.id) }}" style="display:inline">
+          <button class="warn">{% if u.enabled %}Bloquer{% else %}Débloquer{% endif %}</button>
+        </form>
+        <a href="{{ url_for('user_roles', user_id=u.id) }}"><button>Rôles</button></a>
+        <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}" style="display:inline"
+              onsubmit="return confirm('Supprimer ?')">
+          <button class="danger">Supprimer</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

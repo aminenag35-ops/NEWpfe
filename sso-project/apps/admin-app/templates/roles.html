@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Rôles de {{ user.username }}</h1>
+<div class="card">
+  <form method="post">
+    {% for r in all_roles %}
+      <label style="display:block; margin: 6px 0;">
+        <input type="checkbox" name="roles" value="{{ r }}"
+               {% if r in current %}checked{% endif %}>
+        {{ r }}
+      </label>
+    {% endfor %}
+    <button type="submit">Enregistrer</button>
+    <a href="{{ url_for('users') }}"><button type="button">Annuler</button></a>
+  </form>
+</div>
+{% endblock %}

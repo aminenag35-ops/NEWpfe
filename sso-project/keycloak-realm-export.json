@@ -1,0 +1,107 @@
+{
+  "realm": "sso-demo",
+  "enabled": true,
+  "displayName": "SSO Demo - PFE",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "eventsEnabled": true,
+  "eventsListeners": ["jboss-logging", "kafka"],
+  "enabledEventTypes": [
+    "LOGIN", "LOGIN_ERROR", "LOGOUT", "LOGOUT_ERROR",
+    "REGISTER", "REGISTER_ERROR",
+    "REFRESH_TOKEN", "REFRESH_TOKEN_ERROR",
+    "CODE_TO_TOKEN", "CODE_TO_TOKEN_ERROR",
+    "USER_INFO_REQUEST", "UPDATE_PASSWORD",
+    "REMOVE_TOTP", "VERIFY_EMAIL"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true,
+  "roles": {
+    "realm": [
+      { "name": "admin",   "description": "Administrateur" },
+      { "name": "user",    "description": "Utilisateur standard" },
+      { "name": "support", "description": "Support / helpdesk" }
+    ]
+  },
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@demo.local",
+      "firstName": "Alice",
+      "lastName": "Doe",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Alice2024!", "temporary": false }],
+      "realmRoles": ["user"]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@demo.local",
+      "firstName": "Bob",
+      "lastName": "Smith",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Bob2024!", "temporary": false }],
+      "realmRoles": ["user"]
+    },
+    {
+      "username": "charlie",
+      "enabled": true,
+      "email": "charlie@demo.local",
+      "firstName": "Charlie",
+      "lastName": "Brown",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Charlie2024!", "temporary": false }],
+      "realmRoles": ["user", "support"]
+    },
+    {
+      "username": "superadmin",
+      "enabled": true,
+      "email": "superadmin@demo.local",
+      "firstName": "Super",
+      "lastName": "Admin",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Admin2024!", "temporary": false }],
+      "realmRoles": ["admin", "user"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "admin-app",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "admin-app-secret",
+      "redirectUris": ["http://localhost:5001/*"],
+      "webOrigins": ["http://localhost:5001"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "ticket-app",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "ticket-app-secret",
+      "redirectUris": ["http://localhost:5002/*"],
+      "webOrigins": ["http://localhost:5002"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "dashboard-app",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "dashboard-app-secret",
+      "redirectUris": ["http://localhost:5003/*"],
+      "webOrigins": ["http://localhost:5003"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect"
+    }
+  ]
+}

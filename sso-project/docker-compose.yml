@@ -1,0 +1,182 @@
+version: '3.8'
+
+# ==========================================================
+# Projet PFE - SSO Keycloak + Kafka + Postgres + ML
+# Architecture simple et lisible pour Ubuntu Server
+# ==========================================================
+
+services:
+
+  # --- Base de données PostgreSQL (Keycloak + apps + logs) ---
+  postgres:
+    image: postgres:15
+    container_name: sso_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - sso_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- Zookeeper (requis par Kafka) ---
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: sso_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - sso_net
+
+  # --- Kafka (broker d'événements) ---
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: sso_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Deux listeners : interne (autres conteneurs) + externe (host)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - sso_net
+
+  # --- Keycloak (SSO OIDC) ---
+  # On monte notre Event Listener custom dans /opt/keycloak/providers
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: sso_keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres
+      # Variables lues par notre Event Listener custom
+      KC_SPI_EVENTS_LISTENER_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KC_SPI_EVENTS_LISTENER_KAFKA_TOPIC: keycloak-events
+    volumes:
+      # Notre JAR custom (Event Listener -> Kafka) sera placé ici
+      - ./keycloak-kafka-listener/build:/opt/keycloak/providers
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - sso_net
+
+  # --- Consumer Kafka -> PostgreSQL ---
+  # Lit les événements Kafka, enrichit (GeoIP simulé), stocke en base
+  kafka_consumer:
+    build: ./kafka-consumer
+    container_name: sso_kafka_consumer
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_TOPIC: keycloak-events
+      DB_HOST: postgres
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: logsdb
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - sso_net
+    restart: on-failure
+
+  # --- App 1 : Admin User Management ---
+  admin_app:
+    build: ./apps/admin-app
+    container_name: sso_admin_app
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
+      KEYCLOAK_REALM: sso-demo
+      KEYCLOAK_CLIENT_ID: admin-app
+      KEYCLOAK_CLIENT_SECRET: admin-app-secret
+      FLASK_SECRET: change-me-in-prod
+    ports:
+      - "5001:5000"
+    depends_on:
+      - keycloak
+    networks:
+      - sso_net
+
+  # --- App 2 : Ticket + Profil ---
+  ticket_app:
+    build: ./apps/ticket-app
+    container_name: sso_ticket_app
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
+      KEYCLOAK_REALM: sso-demo
+      KEYCLOAK_CLIENT_ID: ticket-app
+      KEYCLOAK_CLIENT_SECRET: ticket-app-secret
+      DB_HOST: postgres
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ticketsdb
+      FLASK_SECRET: change-me-in-prod
+    ports:
+      - "5002:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    networks:
+      - sso_net
+
+  # --- App 3 : Dashboard sécurité (logs + ML) ---
+  dashboard_app:
+    build: ./apps/dashboard-app
+    container_name: sso_dashboard_app
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
+      KEYCLOAK_REALM: sso-demo
+      KEYCLOAK_CLIENT_ID: dashboard-app
+      KEYCLOAK_CLIENT_SECRET: dashboard-app-secret
+      DB_HOST: postgres
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: logsdb
+      FLASK_SECRET: change-me-in-prod
+    ports:
+      - "5003:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sso_net
+
+volumes:
+  postgres_data:
+
+networks:
+  sso_net:
+    driver: bridge

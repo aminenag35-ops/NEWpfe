@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width: 400px; margin: 80px auto; text-align: center;">
+  <h1>Admin User Management</h1>
+  <p>Connecte-toi via le SSO Keycloak.</p>
+  <a href="{{ url_for('login') }}"><button>Se connecter</button></a>
+</div>
+{% endblock %}

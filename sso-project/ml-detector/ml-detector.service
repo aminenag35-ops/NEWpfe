@@ -1,0 +1,31 @@
+# Service systemd pour la détection ML continue
+# ==============================================
+# 1) Copier ce fichier :
+#    sudo cp ml-detector.service /etc/systemd/system/
+# 2) Adapter WorkingDirectory et User
+# 3) Activer :
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable --now ml-detector
+# 4) Logs :
+#    sudo journalctl -u ml-detector -f
+
+[Unit]
+Description=ML Detector - Anomaly detection on Keycloak events
+After=docker.service network.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sso-project/ml-detector
+Environment="DB_HOST=localhost"
+Environment="DB_USER=postgres"
+Environment="DB_PASSWORD=postgres"
+Environment="DB_NAME=logsdb"
+Environment="MODEL_PATH=/home/ubuntu/sso-project/ml-detector/model.pkl"
+ExecStart=/home/ubuntu/sso-project/ml-detector/venv/bin/python run_loop.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

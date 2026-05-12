@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Mon profil</h1>
+<div class="card">
+  <p><strong>Username :</strong> {{ user.preferred_username }}</p>
+  <p><strong>Email :</strong> {{ user.email }}</p>
+  <p><strong>Nom :</strong> {{ user.given_name }} {{ user.family_name }}</p>
+  <p><strong>Rôles :</strong> {{ user.roles | join(', ') }}</p>
+  <p><strong>ID Keycloak :</strong> <code>{{ user.sub }}</code></p>
+</div>
+{% endblock %}

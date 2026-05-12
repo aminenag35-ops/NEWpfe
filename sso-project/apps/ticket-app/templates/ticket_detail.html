@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ ticket.title }}</h1>
+
+<div class="card">
+  <p>
+    <span class="badge {{ ticket.status }}">{{ ticket.status }}</span>
+    <span class="badge {{ ticket.priority }}">{{ ticket.priority }}</span>
+    <small>par {{ ticket.username }} le {{ ticket.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+  </p>
+  <p>{{ ticket.description }}</p>
+
+  {% if 'admin' in me.roles or 'support' in me.roles %}
+  <hr>
+  <form method="post" action="{{ url_for('update_status', tid=ticket.id) }}" style="display:inline">
+    <select name="status">
+      <option value="open"        {% if ticket.status=='open' %}selected{% endif %}>open</option>
+      <option value="in_progress" {% if ticket.status=='in_progress' %}selected{% endif %}>in_progress</option>
+      <option value="closed"      {% if ticket.status=='closed' %}selected{% endif %}>closed</option>
+    </select>
+    <button type="submit">Changer statut</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>Commentaires</h3>
+  {% for c in comments %}
+    <div style="padding: 8px 0; border-bottom: 1px solid #eee;">
+      <strong>{{ c.username }}</strong>
+      <small>{{ c.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+      <p>{{ c.content }}</p>
+    </div>
+  {% else %}
+    <p style="color:#999;">Aucun commentaire</p>
+  {% endfor %}
+
+  <form method="post" style="margin-top:16px;">
+    <textarea name="content" rows="3" placeholder="Ajouter un commentaire..." required></textarea>
+    <button type="submit">Envoyer</button>
+  </form>
+</div>
+{% endblock %}
